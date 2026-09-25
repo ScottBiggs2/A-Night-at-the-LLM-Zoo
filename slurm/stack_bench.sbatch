@@ -1,0 +1,112 @@
+#!/bin/bash
+# Benchmark scores (MMLU / HellaSwag / GPQA) for an already-evaluated stack run.
+# Evaluation only -- fits nothing, trains nothing, writes no artifact except a
+# results JSON tagged `_bench`.
+#
+#   HF_TOKEN=... sbatch slurm/stack_bench.sbatch
+#   BENCH="mmlu hellaswag" N_Q=25 sbatch slurm/stack_bench.sbatch    # cheap probe
+#   SAMPLE_IDX=5 sbatch slurm/stack_bench.sbatch                     # typical member
+#
+# GPQA IS A GATED DATASET. `HF_TOKEN` must be exported BEFORE sbatch, so the job
+# inherits it. Never hardcode it -- this file is tracked by git. The pre-flight
+# check below fails in ~3 seconds rather than dying in a `datasets` traceback
+# 40 minutes in.
+#
+# WHY THIS IS A SEPARATE JOB FROM THE dPPL RUN
+# --------------------------------------------
+# The two axes multiply. Eight arms x 3 benchmarks x 2 ranks x 3 archs at 200
+# questions is ~50 benchmark measurements of ~2,400 forward passes each, i.e. ~120k
+# forwards, ON TOP OF 48 full inverse_transform streaming passes over 350-400M
+# parameter ensembles.
+#
+# `--arms` and `--bench` are independent flags precisely so this splits: the
+# comprehensive dPPL table (all four arms, no bench) is slurm/flow_run.sbatch, and
+# this job takes a SUBSET of arms across all benchmarks. Default subset below is the
+# three arms where a benchmark delta is interpretable -- reconstruction quality
+# (`pca_only`) and the generative comparison that actually decides whether the
+# flows earn their keep (`gauss_codes` vs `flow_codes`).
+#
+# Runtime scales as len(ARMS) x len(BENCH) x N_Q x 2 ranks x n_archs; the measured
+# cost on one V100 was 1.3 h + 1.5 h for the two targets. Raising N_Q or ARMS raises
+# it linearly -- raise --time too.
+#
+# READ THE ABSOLUTE NUMBERS WITH CARE. These are 360-410M parameter base models, so
+# MMLU and GPQA sit at chance (~25%) before any perturbation. The DELTA against the
+# target model's own score is the signal; the absolute accuracy is not. And a delta
+# smaller than a few questions is not a measurement: at 200 questions the quantum is
+# 0.005.
+
+#SBATCH --job-name=stack_bench
+#SBATCH --partition=gpu
+#SBATCH --nodes=1
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=200G
+#SBATCH --time=03:00:00
+#SBATCH --output=logs/%x-%j.out
+#SBATCH --error=logs/%x-%j.err
+
+set -euo pipefail
+# sbatch does not set $0 to the script path, so point at the header explicitly.
+CODE_DIR="${CODE_DIR:-$SLURM_SUBMIT_DIR}"
+source "$CODE_DIR/slurm/env.sh"
+
+RUN="${RUN:-emb3}"
+N_SAMPLES="${N_SAMPLES:-100}"
+BENCH="${BENCH:-mmlu hellaswag gpqa}"
+N_Q="${N_Q:-200}"
+ARMS="${ARMS:-pca_only gauss_codes flow_codes}"
+SAMPLE_IDX="${SAMPLE_IDX:-0}"
+K_FULL=$((N_SAMPLES - 1))
+K_HALF=$((N_SAMPLES / 2))
+RUN_ROOT="$ARTIFACT_DIR/runs/$RUN"
+
+# Pre-flight, in order of how cheap the failure is.
+if [[ "$BENCH" == *gpqa* ]] && [ -z "${HF_TOKEN:-}" ]; then
+    echo "GPQA is gated and HF_TOKEN is not set in this job's environment." >&2
+    echo "Export it before sbatch, or drop gpqa:  BENCH=\"mmlu hellaswag\" sbatch $0" >&2
+    exit 1
+fi
+if [ ! -f "$RUN_ROOT/ensemble/ensemble_meta.json" ]; then
+    echo "No ensemble at $RUN_ROOT. Run slurm/stack_run.sbatch first." >&2
+    exit 1
+fi
+for ARM in $ARMS; do
+    case "$ARM" in
+        flow_*)
+            if ! ls -d "$RUN_ROOT"/flow_k*_* >/dev/null 2>&1; then
+                echo "ARMS includes '$ARM' but $RUN_ROOT has no flow_k*_*/." >&2
+                echo "Run slurm/flow_run.sbatch first, or drop the flow arms." >&2
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+echo "=============================================="
+echo "Run        : $RUN   ranks k=$K_FULL and k=$K_HALF"
+echo "Arms       : $ARMS"
+echo "Benchmarks : $BENCH   ($N_Q questions each)"
+echo "Eval target: sample_idx=$SAMPLE_IDX"
+# Never interpolate the token itself: this line lands in a log file on shared
+# scratch. `${VAR:-fallback}` expands to the VALUE when VAR is set, so the
+# obvious one-liner leaks it. Print the LENGTH.
+if [ -n "${HF_TOKEN:-}" ]; then echo "HF_TOKEN   : set (${#HF_TOKEN} chars)"; else echo "HF_TOKEN   : unset"; fi
+echo "=============================================="
+
+# --out_suffix bench keeps this from overwriting flow_run.sbatch's dPPL results,
+# which land at the same path for the same sample_idx. report_stack.py globs
+# stack_eval_results*.json and renders each file as its own section.
+python -u scripts/eval_stack.py --artifact_dir "$ARTIFACT_DIR" --run_name "$RUN" \
+    --mode full --k "$K_FULL" "$K_HALF" \
+    --arms $ARMS \
+    --bench $BENCH --bench_n_questions "$N_Q" --bench_seed 0 \
+    --sample_idx "$SAMPLE_IDX" \
+    --out_suffix bench \
+    --eval_seq_len 1024 --eval_n_sequences 64
+
+echo; echo "######## report ########"
+python -u scripts/report_stack.py --run_dir "$RUN_ROOT" \
+    --output "$RUN_ROOT/results/report_stack.md"
+
+echo; echo "Done — results in $RUN_ROOT/results/"

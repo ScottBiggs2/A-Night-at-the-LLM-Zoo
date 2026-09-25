@@ -1,0 +1,3 @@
+# tag	nn_l1	n_excluded_mixtures	n_train_rows	extra_args	target_pi
+null_ss0p5	nan	0	-1	--source_std 0.5	
+null_ss1	nan	0	-1	--source_std 1.0	

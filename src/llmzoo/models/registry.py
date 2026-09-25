@@ -1,0 +1,468 @@
+"""
+Architecture registry for llmzoo block-wise weight experiments.
+
+Supports four small transformer-decoder models of similar scale:
+  gpt2_medium    — openai-community/gpt2-medium    (~355M)
+  smollm2_360m   — HuggingFaceTB/SmolLM2-360M     (~360M)
+  gemma3_270m    — google/gemma-3-270m             (~270M)
+  opt_350m       — facebook/opt-350m               (~350M)
+
+Each entry records the HuggingFace model identifier, how to navigate to the
+transformer layer list, which integer family_idx to assign for the conditioning
+embedding, and a tiny_config for random-init local smoke-testing (no download).
+
+Block extraction does NOT use architecture-specific parameter name lists —
+it calls block.named_parameters() directly (see weight_extractor.py).  The
+registry only needs to know how to reach the layer list.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Optional
+
+import torch
+import torch.nn as nn
+
+# ---------------------------------------------------------------------------
+# Architecture configs
+# ---------------------------------------------------------------------------
+
+# Added: SmolLM2-135M, Pythia-160M, Pythia-410M (see below). Gemma 3 270M's
+# HF_TOKEN gating is exercised via the default arch_list now instead of being
+# deferred indefinitely. OPT-350M stays registered but excluded from
+# the default arch_list (see its entry below).
+# Other future candidates? Olmo-2 checkpoint series (see README improvement plan).
+
+ARCH_CONFIGS: dict[str, dict] = {
+    "gpt2_medium": {
+        # ---- HuggingFace identifiers ----
+        "default_model_id": "openai-community/gpt2-medium",
+        "hf_model_type":    "gpt2",
+        # ---- Model tree navigation ----
+        # GPT2LMHeadModel: blocks live at model.transformer.h
+        "layers_attr":      "transformer.h",
+        # ---- Family index for conditioning embedding ----
+        "family_idx":       0,
+        # ---- Tiny mock config (random-init, no download) ----
+        # GPT-2 uses n_embd / n_head / n_layer naming (not hidden_size)
+        "tiny_config": dict(
+            n_embd=128,
+            n_layer=2,
+            n_head=4,
+            n_inner=512,        # 4 × n_embd; None uses 4× default
+            vocab_size=1000,
+            n_positions=512,
+            n_ctx=512,
+        ),
+    },
+
+    "smollm2_360m": {
+        # LlamaForCausalLM variant (SmolLM2 uses LLaMA-2 architecture)
+        "default_model_id": "HuggingFaceTB/SmolLM2-360M",
+        "hf_model_type":    "llama",
+        "layers_attr":      "model.layers",
+        "family_idx":       1,
+        "tiny_config": dict(
+            hidden_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,     # GQA: 2 KV heads
+            intermediate_size=512,
+            vocab_size=1000,
+            max_position_embeddings=512,
+            rms_norm_eps=1e-5,
+            rope_theta=10000.0,
+        ),
+    },
+
+    "qwen3_0_6b": {
+        # Qwen3-0.6B — open weights, no token needed.
+        # LLaMA-style decoder; identical layer layout to smollm2_360m.
+        # Replaces gemma3_270m at family_idx=2 (Gemma 3 is gated and requires
+        # a HF_TOKEN + access approval; kept below as "gemma3_270m" for future use).
+        "default_model_id": "Qwen/Qwen3-0.6B",
+        "hf_model_type":    "qwen3",
+        "layers_attr":      "model.layers",
+        "family_idx":       2,
+        # Real config: 28 layers, hidden=1024, heads=16, kv_heads=8, ffn=3072, head_dim=128
+        "tiny_config": dict(
+            hidden_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=32,               # Qwen3 requires explicit head_dim
+            intermediate_size=512,
+            vocab_size=1000,
+            max_position_embeddings=512,
+            rms_norm_eps=1e-6,
+            rope_theta=10000.0,
+        ),
+    },
+
+    # ── Disabled — see notes on each entry below. Commented out rather than
+    # deleted since both are otherwise-working registrations we may want back.
+    # family_idx values below were renumbered contiguously (0-5) to match;
+    # if either of these is re-enabled, renumber everything again — N_FAMILIES
+    # sizes the conditioning embedding table, so a gap or out-of-range family_idx
+    # crashes training, it doesn't just silently waste a slot.
+    #
+    # "gemma3_270m": {
+    #     # Gemma 3 (Google) — this checkpoint's config.model_type is the
+    #     # text-only "gemma3_text" (no text_config/vision_config split), so
+    #     # AutoModelForCausalLM resolves it to Gemma3ForCausalLM, whose .model
+    #     # is a Gemma3TextModel with .layers directly — no .language_model hop.
+    #     # That hop is only real for the multimodal 4B/12B/27B checkpoints
+    #     # (model_type "gemma3", Gemma3ForConditionalGeneration). Confirmed
+    #     # against a real weight load plus transformers 5.9.0 source and
+    #     # public HF config metadata.
+    #     # Access: https://huggingface.co/google/gemma-3-270m
+    #     # Disabled: gated, requires a fresh HF_TOKEN export before every
+    #     # sbatch — cut for now to simplify launching. To re-enable: set
+    #     # HF_TOKEN and add back to ARCH_LIST in the sbatch script.
+    #     "default_model_id": "google/gemma-3-270m",
+    #     "hf_model_type":    "gemma3_text",
+    #     "layers_attr":      "model.layers",
+    #     "family_idx":       4,
+    #     "tiny_config": dict(
+    #         hidden_size=128,
+    #         num_hidden_layers=2,
+    #         num_attention_heads=4,
+    #         num_key_value_heads=2,
+    #         head_dim=32,
+    #         intermediate_size=512,
+    #         vocab_size=1000,
+    #         max_position_embeddings=512,
+    #         rms_norm_eps=1e-6,
+    #     ),
+    # },
+    # "opt_350m": {
+    #     # OPTForCausalLM — pre-norm, biases on all projections.
+    #     # Disabled: biases pollute the shared PCA basis (see README "Known
+    #     # issues") — cosine_sim=0.77 vs. >0.998 for the bias-free archs.
+    #     "default_model_id": "facebook/opt-350m",
+    #     "hf_model_type":    "opt",
+    #     # OPT layers live at model.model.decoder.layers
+    #     "layers_attr":      "model.decoder.layers",
+    #     "family_idx":       3,
+    #     "tiny_config": dict(
+    #         hidden_size=128,
+    #         num_hidden_layers=2,
+    #         num_attention_heads=4,
+    #         ffn_dim=512,
+    #         word_embed_proj_dim=128,
+    #         vocab_size=1000,
+    #         max_position_embeddings=512,
+    #     ),
+    # },
+
+    "smollm2_135m": {
+        # LlamaForCausalLM — same family as smollm2_360m, narrower hidden dim.
+        "default_model_id": "HuggingFaceTB/SmolLM2-135M",
+        "hf_model_type":    "llama",
+        "layers_attr":      "model.layers",
+        "family_idx":       3,
+        # Real config: 30 layers, hidden=576, heads=9, kv_heads=3, ffn=1536
+        "tiny_config": dict(
+            hidden_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,     # GQA: 2 KV heads
+            intermediate_size=512,
+            vocab_size=1000,
+            max_position_embeddings=512,
+            rms_norm_eps=1e-5,
+            rope_theta=10000.0,
+        ),
+    },
+
+    # Pythia (GPT-NeoX) linear layers carry biases on every projection, same
+    # as OPT (disabled above) — same PCA-pollution risk applies here too.
+    # Added anyway per the "amazing source of checkpoints" note; keep an eye
+    # on their reconstruction quality once trained.
+    "pythia_160m": {
+        # GPTNeoXForCausalLM: blocks live at model.gpt_neox.layers
+        "default_model_id": "EleutherAI/pythia-160m",
+        "hf_model_type":    "gpt_neox",
+        "layers_attr":      "gpt_neox.layers",
+        "family_idx":       4,
+        # Real config: 12 layers, hidden=768, heads=12, ffn=3072
+        "tiny_config": dict(
+            hidden_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=512,
+            vocab_size=1000,
+            max_position_embeddings=512,
+            rotary_pct=0.25,
+            rotary_emb_base=10000,
+            layer_norm_eps=1e-5,
+            use_parallel_residual=True,
+        ),
+    },
+    "pythia_410m": {
+        # GPTNeoXForCausalLM: blocks live at model.gpt_neox.layers
+        "default_model_id": "EleutherAI/pythia-410m",
+        "hf_model_type":    "gpt_neox",
+        "layers_attr":      "gpt_neox.layers",
+        "family_idx":       5,
+        # Real config: 24 layers, hidden=1024, heads=16, ffn=4096
+        "tiny_config": dict(
+            hidden_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=512,
+            vocab_size=1000,
+            max_position_embeddings=512,
+            rotary_pct=0.25,
+            rotary_emb_base=10000,
+            layer_norm_eps=1e-5,
+            use_parallel_residual=True,
+        ),
+    },
+    # ── The zoo architectures ──────────────────────────────────────────────
+    # GPT-2, held as close to the published configuration as HF allows:
+    # Radford, Wu, Child, Luan, Amodei & Sutskever (2019), "Language Models are
+    # Unsupervised Multitask Learners", OpenAI. https://github.com/openai/gpt-2
+    #
+    # These are trained FROM SCRATCH by scripts/train_zoo.py, so they have no
+    # default_model_id. `from_scratch: True` is what stops load_model() trying to
+    # download them.
+    #
+    # Small and Medium are exactly the published 124M and 355M configurations.
+    # Mini has no published equivalent and is ours; it is labelled as such in the
+    # paper. Vocab stays 50257 at every scale — shrinking it for Mini would change
+    # the tokenizer, and a scaling comparison across tokenizers is not one.
+    #
+    # HF's GPT2LMHeadModel gives us the published initialization for free: its
+    # _init_weights scales every `c_proj.weight` by 1/sqrt(2 * n_layer), which is
+    # the paper's "scale residual weights by 1/sqrt(N)".
+    "gpt2_zoo_mini": {
+        "hf_model_type": "gpt2",
+        "layers_attr":   "transformer.h",
+        "family_idx":    6,
+        "from_scratch":  True,
+        "zoo_config": dict(n_embd=512, n_layer=8, n_head=8),
+        "tiny_config": dict(n_embd=128, n_layer=2, n_head=4, n_inner=512,
+                            vocab_size=1000, n_positions=512, n_ctx=512),
+    },
+    "gpt2_zoo_small": {
+        "hf_model_type": "gpt2",
+        "layers_attr":   "transformer.h",
+        "family_idx":    7,
+        "from_scratch":  True,
+        # == published GPT-2 124M
+        "zoo_config": dict(n_embd=768, n_layer=12, n_head=12),
+        "tiny_config": dict(n_embd=128, n_layer=2, n_head=4, n_inner=512,
+                            vocab_size=1000, n_positions=512, n_ctx=512),
+    },
+    "gpt2_zoo_medium": {
+        "hf_model_type": "gpt2",
+        "layers_attr":   "transformer.h",
+        "family_idx":    8,
+        "from_scratch":  True,
+        # == published GPT-2 355M
+        "zoo_config": dict(n_embd=1024, n_layer=24, n_head=16),
+        "tiny_config": dict(n_embd=128, n_layer=2, n_head=4, n_inner=512,
+                            vocab_size=1000, n_positions=512, n_ctx=512),
+    },
+}
+
+# How many architectures are registered. Informational only -- do NOT use this to
+# size a conditioning table (see N_COND_SLOTS).
+N_ARCHS = len(ARCH_CONFIGS)
+
+# Conditioning-table size for FlowVelocityNet.
+#
+# Sizing it as `len(ARCH_CONFIGS)` would mean **registering a new architecture
+# silently changes every embedding table's shape** and invalidates every saved
+# checkpoint. It is a fixed, generous constant that no registry edit can
+# move: 32 slots x cond_dim 64 is 2048 parameters, which is free.
+#
+# The conditioning axis is on its way to becoming a
+# continuous mixture vector, at which point this stops mattering entirely,
+# but until then it must not be coupled to the registry.
+N_COND_SLOTS = 32
+
+# Back-compat alias. Existing call sites pass this as `n_families`; it now resolves
+# to the fixed slot count rather than the registry size, which is the fix.
+N_FAMILIES = N_COND_SLOTS
+
+if N_ARCHS > N_COND_SLOTS:
+    raise RuntimeError(
+        f"{N_ARCHS} architectures registered but only {N_COND_SLOTS} conditioning "
+        f"slots. Raise N_COND_SLOTS -- but note that doing so changes every "
+        f"conditioning-table shape and therefore invalidates saved checkpoints."
+    )
+
+# Maximum block index across all architectures (for embedding table sizing)
+MAX_BLOCKS = max(
+    cfg.get("n_layers_hint", 36)        # conservative upper bound
+    for cfg in ARCH_CONFIGS.values()
+)
+# Actual upper bound: SmolLM2-360M has 32 layers (the tallest of all
+# registered archs — smollm2_135m=30, pythia_410m=24, pythia_160m=12), so
+# 40 is a safe ceiling.
+MAX_BLOCKS = 40
+
+
+# ---------------------------------------------------------------------------
+# Accessors
+# ---------------------------------------------------------------------------
+
+def list_archs() -> list[str]:
+    return list(ARCH_CONFIGS.keys())
+
+
+def get_arch_config(arch: str) -> dict:
+    if arch not in ARCH_CONFIGS:
+        raise ValueError(f"Unknown arch '{arch}'. Choose from: {list(ARCH_CONFIGS)}")
+    return ARCH_CONFIGS[arch]
+
+
+def load_model(
+    arch: str,
+    model_id: Optional[str] = None,
+    dtype: torch.dtype = torch.float32,
+    cache_dir: Optional[str] = None,
+    token: Optional[str] = None,
+) -> nn.Module:
+    """
+    Load a full pretrained model from HuggingFace.
+
+    Uses float32 by default so block extractions are lossless.
+    Models are loaded with low_cpu_mem_usage=True to avoid OOM during loading.
+    """
+    from transformers import AutoModelForCausalLM
+
+    cfg = get_arch_config(arch)
+    if cfg.get("from_scratch") and model_id is None:
+        raise ValueError(
+            f"'{arch}' is a zoo architecture trained from scratch -- it has no "
+            f"default_model_id and nothing to download. Use build_zoo_model('{arch}') "
+            f"to construct it, or pass model_id= explicitly to load a local "
+            f"checkpoint directory."
+        )
+    mid = model_id or cfg["default_model_id"]
+    hf_token = token or os.environ.get("HF_TOKEN")
+    # None lets huggingface_hub fall back to its own default; the sbatch scripts
+    # export HF_HOME to scratch so a job never caches into $HOME.
+    hf_cache = cache_dir or os.environ.get("HF_HOME")
+
+    print(f"Loading {mid} (arch={arch}, dtype={dtype}) …")
+    model = AutoModelForCausalLM.from_pretrained(
+        mid,
+        torch_dtype=dtype,
+        token=hf_token,
+        low_cpu_mem_usage=True,
+        cache_dir=hf_cache,
+        trust_remote_code=True,   # needed for Gemma3 and some SmolLM variants
+    )
+    model.eval()
+    return model
+
+
+def build_tiny_model(arch: str) -> nn.Module:
+    """
+    Construct a randomly-initialised model with the correct architecture class
+    but at a reduced scale (hidden=128, 2 layers).  No download needed.
+    Useful for local pipeline testing without any internet access.
+    """
+    from transformers import AutoConfig, AutoModelForCausalLM
+
+    cfg = get_arch_config(arch)
+    tiny = cfg["tiny_config"].copy()
+    tiny["model_type"] = cfg["hf_model_type"]
+
+    hf_cfg = AutoConfig.for_model(**tiny)
+    if hasattr(hf_cfg, "tie_word_embeddings"):
+        hf_cfg.tie_word_embeddings = False
+
+    model = AutoModelForCausalLM.from_config(hf_cfg)
+    model.eval()
+    return model
+
+
+# GPT-2's published hyperparameters, held fixed across the whole zoo ladder so the
+# only thing that varies with scale is (n_layer, n_embd, n_head).
+#
+#   pre-LayerNorm with an extra LN after the final block ...... GPT2Model, built in
+#   learned absolute positions, n_positions = 1024 ............ n_positions
+#   GELU, n_inner = 4 * n_embd ............................... activation_function
+#   biases on every Conv1D projection ........................ built in
+#   tied wte / lm_head ....................................... tie_word_embeddings
+#   BPE vocab 50257 .......................................... vocab_size
+#   residual weights scaled 1/sqrt(2 * n_layer) at init ...... GPT2PreTrainedModel
+#
+# The one deliberate deviation is dropout. GPT-2 published 0.1, but the zoo is
+# trained for a single Chinchilla-optimal pass over a corpus far larger than the
+# model, where there is nothing to overfit and dropout only costs signal. Standard
+# practice for from-scratch pretraining (nanoGPT and successors use 0.0). Set
+# GPT2_ZOO_DROPOUT to 0.1 to reproduce the published value exactly.
+GPT2_ZOO_VOCAB_SIZE = 50257
+GPT2_ZOO_N_POSITIONS = 1024
+GPT2_ZOO_DROPOUT = 0.0
+
+
+def zoo_config(arch: str, *, dropout: Optional[float] = None) -> "object":
+    """Return the HF GPT2Config for a zoo architecture. No weights, no download."""
+    from transformers import GPT2Config
+
+    cfg = get_arch_config(arch)
+    if "zoo_config" not in cfg:
+        raise ValueError(f"'{arch}' has no zoo_config; it is not a zoo architecture.")
+    if cfg["hf_model_type"] != "gpt2":
+        raise ValueError(f"zoo_config() is GPT-2 only; '{arch}' is "
+                         f"{cfg['hf_model_type']}.")
+    z = cfg["zoo_config"]
+    p = GPT2_ZOO_DROPOUT if dropout is None else float(dropout)
+    return GPT2Config(
+        vocab_size=GPT2_ZOO_VOCAB_SIZE,
+        n_positions=GPT2_ZOO_N_POSITIONS,
+        n_embd=z["n_embd"],
+        n_layer=z["n_layer"],
+        n_head=z["n_head"],
+        n_inner=4 * z["n_embd"],
+        activation_function="gelu_new",
+        resid_pdrop=p, embd_pdrop=p, attn_pdrop=p,
+        layer_norm_epsilon=1e-5,
+        initializer_range=0.02,
+        tie_word_embeddings=True,
+    )
+
+
+def build_zoo_model(arch: str, *, seed: Optional[int] = None,
+                    dropout: Optional[float] = None) -> nn.Module:
+    """
+    Construct a randomly-initialised GPT-2 at one of the zoo scales.
+
+    `seed` sets the initialization. The trunk is built once with a fixed seed and
+    every branch descends from it, so branches must NOT call
+    this with different seeds -- they load the trunk checkpoint. This argument
+    exists for the trunk itself and for the independent-init control arm.
+    """
+    from transformers import GPT2LMHeadModel
+
+    if seed is not None:
+        torch.manual_seed(int(seed))
+    model = GPT2LMHeadModel(zoo_config(arch, dropout=dropout))
+    return model
+
+
+def zoo_param_count(arch: str) -> dict:
+    """Analytic parameter counts. Cheap enough to assert against in a smoke test."""
+    z = get_arch_config(arch)["zoo_config"]
+    d, L = z["n_embd"], z["n_layer"]
+    blocks = L * (12 * d * d + 13 * d)
+    emb = GPT2_ZOO_VOCAB_SIZE * d + GPT2_ZOO_N_POSITIONS * d
+    return {"blocks": blocks, "embeddings": emb, "total": blocks + emb + 2 * d,
+            "embedding_fraction": emb / (blocks + emb + 2 * d)}
+
+
+def get_layers(model: nn.Module, arch: str):
+    """Return the ModuleList of transformer decoder blocks."""
+    cfg = get_arch_config(arch)
+    obj = model
+    for attr in cfg["layers_attr"].split("."):
+        obj = getattr(obj, attr)
+    return obj

@@ -1,0 +1,662 @@
+"""
+Whole-stack evaluation: PCA reconstruction and generative arms, at one or more ranks.
+
+Every arm writes a full stack into a live model, measures it, and restores:
+
+  pca_only         codes[i][:k] -> inverse_transform            reconstruction
+  gauss_codes      z ~ N(mu_f, s_f) from code stats -> inverse  THE NULL MODEL
+  flow_codes       flow sample in code space -> inverse         flow over codes
+  flow_rt_codes    codes -> reverse ODE -> forward ODE -> inverse  ODE consistency
+
+Four rules for reading the output
+---------------------------------
+1. `pca_only` at k = N-1 is a SELF-TEST, not a result. Centering removes one degree
+   of freedom, so the rank bound makes it exact; cosine other than 1.000000 there is
+   a bug.
+2. Gate on dPPL, never on cosine. A measured 0.99939 cosine came with +72,468% PPL,
+   so cosine below about 0.9999 tells you nothing.
+3. Judge the flow arms against `gauss_codes`, not against `pca_only`. On a
+   manufactured noise ensemble the per-family code distribution is near-Gaussian by
+   construction, so a flow that merely reproduces the prior will look fine next to
+   `pca_only` and identical to `gauss_codes`.
+4. A NEGATIVE dPPL at low rank is not success. It means the target was a noisy
+   ensemble member and truncation removed some of the noise.
+
+Benchmark accuracy (--bench) is measured on the SAME in-memory reconstructed model,
+between write-back and restore, so each arm pays one model load rather than one per
+benchmark. It is opt-in because it is the expensive axis: 3 benchmarks x 200
+questions x 4 choices is ~2,400 forward passes PER ARM PER ARCH PER RANK.
+
+    python scripts/eval_stack.py --run_name perfam --k 99 50
+    python scripts/eval_stack.py --run_name perfam --k 50 --arms pca_only gauss_codes flow_codes
+    python scripts/eval_stack.py --run_name perfam --arms pca_only --bench
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import os
+from typing import Dict, List, Optional
+
+import numpy as np
+import torch
+
+from llmzoo.artifacts.io import read_json
+from llmzoo.models.registry import (
+    get_arch_config, load_model, build_tiny_model, build_zoo_model,
+)
+from llmzoo.models.weight_extractor import (
+    read_stack_from_model, write_stack_to_model,
+)
+from llmzoo.artifacts.bundle import load_run
+from llmzoo.eval.benchmarks import (
+    ALL_BENCHMARKS,
+    _synthetic_examples,
+    _SyntheticTokenizer,
+    bench_deltas,
+    load_bench_examples,
+    measure_benchmarks,
+)
+import llmzoo.wandb_utils as wb
+
+
+# ---------------------------------------------------------------------------
+# Arms
+# ---------------------------------------------------------------------------
+
+ARMS = ("pca_only", "gauss_codes", "flow_codes", "flow_rt_codes")
+
+# Which artifacts each arm needs, so load_run can skip the expensive ones. Building
+# the EnsembleDataset memmaps a ~1.2 GB mean per family, and --arms pca_only should
+# not fail merely because flow_k50_codes/ is absent.
+_ARM_WANTS = {
+    "pca_only":        ("dataset", "pca"),
+    "gauss_codes":     ("dataset", "pca", "codes"),
+    "flow_codes":      ("dataset", "pca", "codes", "flow"),
+    "flow_rt_codes":   ("dataset", "pca", "codes", "flow"),
+}
+
+
+def wants_for(arms) -> tuple:
+    out = set()
+    for a in arms:
+        out.update(_ARM_WANTS.get(a, ("dataset", "pca")))
+    return tuple(sorted(out))
+
+
+def flow_spaces_for(arms) -> tuple:
+    spaces = set()
+    for a in arms:
+        if a in ("flow_codes", "flow_rt_codes"):
+            spaces.add("codes")
+    return tuple(sorted(spaces))
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+#
+# write_stack_to_model / read_stack_from_model live in llmzoo/models/weight_extractor.py
+# so the flow sampler and the benchmark path can reuse them without importing an
+# eval script.
+# ---------------------------------------------------------------------------
+
+def stack_metrics(recon: np.ndarray, w0: np.ndarray) -> dict:
+    r = np.asarray(recon, dtype=np.float64)
+    w = np.asarray(w0, dtype=np.float64)
+    denom = np.linalg.norm(r) * np.linalg.norm(w) + 1e-30
+    return {"cosine_sim": float(np.dot(r, w) / denom),
+            "mse": float(np.mean((r - w) ** 2)),
+            "rel_l2": float(np.linalg.norm(r - w) / (np.linalg.norm(w) + 1e-30))}
+
+
+# ---------------------------------------------------------------------------
+# Multiple-choice benchmarks
+#
+# ALL_BENCHMARKS, _synthetic_examples, _SyntheticTokenizer, load_bench_examples,
+# measure_benchmarks and bench_deltas live in
+# llmzoo.eval.benchmarks (imported at the top of this file) so that
+# scripts/eval_generated.py can reach them too: this script scores ENSEMBLE-ROW
+# reconstructions, and a zoo member read back from w_<i>.npy or a flow-generated
+# model decoded from codes would otherwise have no path to compute_mc_accuracy.
+# measure_benchmarks returns exactly {acc, acc_norm, n_examples}.
+#
+# The scoring primitives themselves stay in llmzoo.eval.core, which takes any
+# nn.Module and knows nothing about PCA / flows / bundles. That is what lets the
+# measurement sit inside the arm loop on a model that has just had a reconstruction
+# written into it.
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Per-arch evaluation
+# ---------------------------------------------------------------------------
+
+def evaluate_arch(
+    arch: str,
+    bundle,
+    k: int,
+    arms: List[str],
+    seq_len: int,
+    n_sequences: int,
+    hf_cache: Optional[str],
+    mode: str,
+    seed: int,
+    sample_idx: int = 0,
+    *,
+    bench_examples: Optional[Dict[str, list]] = None,
+    bench_baseline_cache: Optional[dict] = None,
+    bench_max_length: Optional[int] = None,
+    flow_steps: Optional[int] = None,
+    flow_guidance_scale: Optional[float] = None,
+    flow_rt_steps: Optional[List[int]] = None,
+    dispersion_n: int = 64,
+) -> dict:
+    from llmzoo.eval.core import compute_perplexity, get_max_context_length
+
+    ds = bundle.dataset
+    pca = bundle.pcas.get(arch)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cfg = get_arch_config(arch)
+
+    # A zoo architecture is trained from scratch, so there is nothing on the hub to
+    # download: load_model() refuses it by design (registry.py) and the config carries
+    # no `default_model_id`. build_zoo_model() is the constructor train_zoo.py and
+    # eval_domains.py both use, and seed=0 matches eval_domains.py -- the weights are
+    # overwritten by write_stack_to_model before anything is measured, so the seed only
+    # has to be consistent, not meaningful.
+    from_scratch = bool(cfg.get("from_scratch"))
+    if mode == "tiny":
+        model = build_tiny_model(arch)
+    elif from_scratch:
+        model = build_zoo_model(arch, seed=0)
+    else:
+        model = load_model(arch, cache_dir=hf_cache)
+    model = model.to(device)
+    model.eval()
+
+    tok = None
+    if mode == "tiny":
+        from llmzoo.data.val_loader import get_synthetic_loader
+        vocab = cfg["tiny_config"].get("vocab_size",
+                                       cfg["tiny_config"].get("n_positions", 1000))
+        loader = get_synthetic_loader(vocab_size=vocab, seq_len=seq_len,
+                                     n_sequences=n_sequences)
+        if bench_examples:
+            # NOT the real tokenizer: its ids overflow the tiny vocab and trip a
+            # CUDA device-side assert in the embedding lookup.
+            tok = _SyntheticTokenizer(vocab)
+    else:
+        from llmzoo.data.val_loader import get_wikitext2_loader
+        from transformers import AutoTokenizer
+        # A zoo arch has no default_model_id. Its vocab IS GPT-2 BPE at 50257
+        # (fixed across the whole ladder), so "gpt2" is the
+        # correct tokenizer rather than a stand-in -- same id as eval_domains.py's
+        # TOKENIZER_ID, which is what keeps the two scoring paths comparable.
+        tok_id = "gpt2" if from_scratch else cfg["default_model_id"]
+        tok = AutoTokenizer.from_pretrained(tok_id,
+                                            cache_dir=hf_cache,
+                                            trust_remote_code=True)
+        loader = get_wikitext2_loader(tok, seq_len=seq_len,
+                                     n_sequences=n_sequences, cache_dir=hf_cache)
+
+    st = ds.stacks[arch]
+    fidx = torch.tensor([st.family_idx], dtype=torch.long, device=device)
+
+    # The target is ensemble ROW `sample_idx`, and it is written into the model
+    # UNCONDITIONALLY.
+    #
+    # Skipping the write at sample_idx == 0 would be correct for exactly one case
+    # and silently catastrophic for the other. For a NOISE ensemble row 0
+    # is w_0, the live pretrained model already holds it, and the write is a no-op.
+    # For a ZOO there is no w_0: the live model is build_zoo_model()'s RANDOM INIT
+    # and row 0 is an arbitrary member (ensemble.py's _extract_zoo says so). Skipping
+    # the write leaves `original_ppl` measuring a random model -- 57,419 against a
+    # trained member's ~40 -- so every arm's ppl_delta is scored against the most
+    # flattering baseline available and reads as a spectacular success.
+    #
+    # One redundant write on the noise path is worth strictly more than that.
+    target = (np.asarray(ds.w0(arch)) if sample_idx == 0
+              else ds.materialize_sample(arch, sample_idx, device=device))
+    write_stack_to_model(target, model, arch, st)
+
+    # Pristine copy AFTER installing the target, so restore() returns to the target.
+    # This must be the WHOLE stack, not a list of block flats: with the extra
+    # segment in play a per-block snapshot silently omits the embeddings, so
+    # restore() would leave a mutated embedding behind and every arm after the
+    # first would measure a corrupted baseline.
+    pristine = read_stack_from_model(model, arch, st)
+
+    print(f"  [{arch}] measuring PPL of ensemble member {sample_idx} …")
+    base = compute_perplexity(model, loader, device)
+    print(f"  [{arch}] member {sample_idx} PPL = {base['perplexity']:.4f}")
+
+    def restore():
+        write_stack_to_model(pristine, model, arch, st)
+
+    out = {"arch": arch, "k": k, "n_layers": st.n_layers,
+           "n_params": st.n_params, "extra_size": st.extra_size,
+           "sample_idx": sample_idx,
+           "original_ppl": base["perplexity"],
+           "ce_original": base["ce_loss"], "arms": {}}
+
+    # Baseline benchmark scores depend only on (arch, sample_idx) -- they are the
+    # same at every rank -- but main() reloads the model for each (k, arch) pair.
+    # Without this cache the most expensive measurement in the job is repeated once
+    # per rank for nothing.
+    base_bench = None
+    if bench_examples:
+        max_len = bench_max_length or get_max_context_length(model)
+        ck = (arch, sample_idx)
+        if bench_baseline_cache is not None and ck in bench_baseline_cache:
+            base_bench = bench_baseline_cache[ck]
+            print(f"  [{arch}] reusing cached baseline benchmark scores")
+        else:
+            print(f"  [{arch}] measuring baseline benchmarks "
+                  f"({', '.join(bench_examples)}) …")
+            base_bench = measure_benchmarks(model, tok, bench_examples, device,
+                                            max_len)
+            if bench_baseline_cache is not None:
+                bench_baseline_cache[ck] = base_bench
+        for bn, bv in base_bench.items():
+            print(f"  [{arch}] baseline {bn:10s} acc={bv['acc']:.4f} "
+                  f"acc_norm={bv['acc_norm']:.4f}  (n={bv['n_examples']})")
+        out["bench_config"] = {"benchmarks": list(bench_examples),
+                               "n_questions": max(len(v) for v in
+                                                  bench_examples.values()),
+                               "max_length": max_len}
+        out["original_bench"] = base_bench
+
+    codes_k = pca.codes(k)[sample_idx]
+    codes_t = torch.from_numpy(codes_k.reshape(1, -1).copy()).float().to(device)
+
+    def _decode(codes_1d) -> np.ndarray:
+        """Codes -> full stack. Every arm funnels through here."""
+        return bundle.decode_codes_to_stack(codes_1d, arch, k=k)
+
+    def _need(obj, arm: str, what: str) -> bool:
+        if obj is None:
+            print(f"  [{arch}] skipping {arm!r} — no {what} loaded for k={k}")
+            return False
+        return True
+
+    # --- dispersion reference ------------------------------------------------
+    #
+    # dPPL alone CANNOT police a generative arm here. `mean(w) = w_0 +
+    # O(s*sigma/sqrt(N))`, so the ensemble mean essentially IS the real pretrained
+    # model, and a generator collapsed toward its family mean scores dPPL ~ 0 --
+    # better than an honest sample -- while generating nothing. Measured on emb3:
+    # flow_codes beat the gauss_codes null by 43x on dPPL while emitting codes at
+    # 0.25x the correct RMS.
+    #
+    # `gauss_codes` cannot catch that, because a collapsed flow beats it by
+    # construction. So report the spread of the codes each generative arm actually
+    # produced. One k-dimensional draw gives its RMS to about 1/sqrt(2k) -- ~7% at
+    # k=99 -- which is far tighter than the 4x collapse being detected, so this costs
+    # no extra sampling.
+    real_code_rms = None
+    if bundle.code_stats is not None and bundle.code_stats.codes is not None:
+        _cs = bundle.code_stats
+        _rows = _cs.codes[_cs.family_idxs == int(fidx[0])]
+        if _rows.shape[0] > 0:
+            _rt = torch.from_numpy(_rows[:, :k].copy()).float().to(device)
+            _rn = _cs.normalize(_rt, fidx.expand(_rt.shape[0]))
+            real_code_rms = float(_rn.pow(2).mean().sqrt())
+
+    def _dispersion(sampler, n: int) -> dict:
+        """
+        Spread of a generative arm's codes, pooled over `n` draws.
+
+        A batch, not one draw. A single k-dimensional sample would estimate the RMS
+        to 1/sqrt(2k) -- about 7% at k=99 -- ONLY if the arm's output were isotropic
+        with stable per-sample norms. It is not: measured against a 256-draw
+        reference, one draw read 0.14 where the pooled value was 0.249. The
+        per-sample norm varies enough that one draw is not representative, so the
+        statistic is pooled.
+
+        Cheap either way. Sampling codes is microseconds; the expensive step in this
+        function is `inverse_transform`, and that still runs exactly once per arm on
+        the first row.
+        """
+        if bundle.code_stats is None or n < 1:
+            return {}
+        g = torch.Generator(device=device).manual_seed(seed)
+        with torch.no_grad():
+            batch = sampler(n, g)
+        xn = bundle.code_stats.normalize(batch, fidx.expand(batch.shape[0]))
+        rms = float(xn.pow(2).mean().sqrt())
+        # Per-sample norms too: an arm that emits ONE off-centre point repeatedly has
+        # a healthy pooled RMS and zero diversity.
+        per = xn.pow(2).mean(dim=1).sqrt()
+        out = {"code_rms": rms, "real_code_rms": real_code_rms,
+               "code_rms_n_draws": int(n),
+               "code_rms_per_sample_std": float(per.std()) if n > 1 else None}
+        if real_code_rms:
+            out["code_rms_ratio"] = rms / real_code_rms
+        return out
+
+    for arm in arms:
+        extra_metrics: dict = {}
+
+        if arm == "pca_only":
+            recon = _decode(codes_k)
+
+        elif arm == "gauss_codes":
+            # The NULL MODEL the flows have to beat. On a manufactured noise
+            # ensemble the per-family code distribution is near-Gaussian by
+            # construction, so if flow_codes does not beat this, the flow learned
+            # only the prior and its ΔPPL means nothing on its own.
+            if not _need(bundle.code_stats, arm, "code stats"):
+                continue
+            cs = bundle.code_stats
+
+            def _gauss_sampler(n, g, _cs=cs):
+                z = torch.randn(n, k, device=device, generator=g)
+                return _cs.denormalize(z, fidx.expand(n))
+            g = torch.Generator(device=device).manual_seed(seed)
+            with torch.no_grad():
+                gz = _gauss_sampler(1, g)
+            extra_metrics = _dispersion(_gauss_sampler, dispersion_n)
+            recon = _decode(gz.cpu().numpy().reshape(-1))
+
+        elif arm == "flow_codes":
+            space = "codes"
+            fm = bundle.flows.get(space)
+            if not _need(fm, arm, f"{space}-space flow"):
+                continue
+            def _flow_sampler(n, g, _fm=fm):
+                return _fm.sample_codes(fidx.expand(n), n_steps=flow_steps,
+                                        guidance_scale=flow_guidance_scale,
+                                        generator=g)
+            g = torch.Generator(device=device).manual_seed(seed)
+            with torch.no_grad():
+                oc = _flow_sampler(1, g)
+            extra_metrics = {"flow_steps": flow_steps or fm.default_steps,
+                             "flow_guidance_scale": (flow_guidance_scale
+                                                     if flow_guidance_scale is not None
+                                                     else fm.default_guidance),
+                             "flow_trust": fm.trust}
+            extra_metrics.update(_dispersion(_flow_sampler, dispersion_n))
+            recon = _decode(oc.cpu().numpy().reshape(-1))
+
+        elif arm == "flow_rt_codes":
+            space = "codes"
+            fm = bundle.flows.get(space)
+            if not _need(fm, arm, f"{space}-space flow"):
+                continue
+            # A sweep over n_steps is the only way to separate Euler
+            # discretisation error (falls like 1/n_steps) from the model failing to
+            # be a consistent vector field (does not). The reported arm uses the
+            # largest step count; the sweep rides along as a diagnostic.
+            steps_list = flow_rt_steps or [flow_steps or fm.default_steps]
+            sweep = {}
+            for ns in sorted(set(steps_list)):
+                with torch.no_grad():
+                    oc, diag = fm.round_trip_codes(codes_t, fidx, n_steps=ns)
+                sweep[str(ns)] = diag
+            best_ns = max(sweep, key=lambda x: int(x))
+            extra_metrics = {"flow_rt_n_steps": int(best_ns),
+                             "flow_rt_space_rel_l2": sweep[best_ns]["rel_l2_space"],
+                             "flow_rt_x0_rms": sweep[best_ns]["x0_hat_rms"],
+                             "flow_rt_sweep": sweep,
+                             "flow_trust": fm.trust}
+            recon = _decode(oc.cpu().numpy().reshape(-1))
+
+        else:
+            raise ValueError(f"unknown arm {arm!r} (expected one of {ARMS})")
+
+        m = stack_metrics(recon, target)
+        m.update(extra_metrics)
+        write_stack_to_model(recon, model, arch, st)
+        res = compute_perplexity(model, loader, device)
+        # Benchmarks go here -- after write-back, before restore -- so every arm
+        # added later inherits them without touching this code. The measurement is
+        # keyed only on "the model currently holds a reconstruction".
+        arm_bench = None
+        if bench_examples:
+            arm_bench = bench_deltas(
+                base_bench,
+                measure_benchmarks(model, tok, bench_examples, device,
+                                   bench_max_length or get_max_context_length(model)))
+        restore()
+
+        delta = res["perplexity"] - base["perplexity"]
+        pct = 100.0 * delta / max(base["perplexity"], 1e-9)
+        out["arms"][arm] = {**m, "ppl": res["perplexity"], "ppl_delta": delta,
+                            "ppl_delta_pct": pct, "ce": res["ce_loss"]}
+        # Print the dispersion ratio INLINE for generative arms, with a COLLAPSED
+        # tag. A low dPPL next to a low ratio is the collapse trap, and it has to
+        # be visible in the log where the number is read, not only in the JSON.
+        disp = ""
+        ratio = m.get("code_rms_ratio")
+        if ratio is not None:
+            tag = ("COLLAPSED" if ratio < 0.5 else
+                   "shrunken" if ratio < 0.8 else
+                   "over-disp" if ratio > 1.25 else "ok")
+            disp = f"  rms={ratio:.2f}x[{tag}]"
+        print(f"  [{arch}] {arm:9s} k={k:<4d} cos={m['cosine_sim']:.6f}  "
+              f"relL2={m['rel_l2']:.4g}  PPL={res['perplexity']:12.4f}  "
+              f"Δ={pct:+.3f}%{disp}")
+        _wblog = {f"stack/{arch}/k{k}/{arm}/cosine_sim": m["cosine_sim"],
+                  f"stack/{arch}/k{k}/{arm}/ppl_delta_pct": pct,
+                  f"stack/{arch}/k{k}/{arm}/ppl": res["perplexity"]}
+        if ratio is not None:
+            _wblog[f"stack/{arch}/k{k}/{arm}/code_rms_ratio"] = ratio
+        wb.log(_wblog)
+
+        if arm_bench:
+            out["arms"][arm]["bench"] = arm_bench
+            parts = "   ".join(f"{bn} {bv['acc_delta']:+.4f}"
+                               for bn, bv in arm_bench.items())
+            print(f"  [{arch}]           {'':14s}└ bench Δacc  {parts}")
+            wb.log({f"stack/{arch}/k{k}/{arm}/{bn}/{key}": bv[key]
+                    for bn, bv in arm_bench.items()
+                    for key in ("acc", "acc_norm", "acc_delta", "acc_norm_delta")})
+
+    del model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return out
+
+
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--artifact_dir",
+                   default=os.environ.get("ARTIFACT_DIR", "./artifacts"),
+                   help="Run artifacts root. slurm/env.sh exports "
+                        "ARTIFACT_DIR; this flag overrides it.")
+    p.add_argument("--run_name", default="perfam")
+    p.add_argument("--arch_list", nargs="+", default=None)
+    p.add_argument("--k", nargs="+", type=int, default=None,
+                   help="Ranks to evaluate. Default: the fitted maximum and half it.")
+    p.add_argument("--arms", nargs="+", default=["pca_only"],
+                   choices=list(ARMS),
+                   help="gauss_codes is the null model the flow arms must beat: on "
+                        "a manufactured noise ensemble the per-family code "
+                        "distribution is near-Gaussian by construction, so "
+                        "flow_codes vs gauss_codes is the comparison that carries "
+                        "information — not flow_codes vs pca_only.")
+    p.add_argument("--mode", choices=["tiny", "full"], default="full")
+    p.add_argument("--eval_seq_len", type=int, default=1024)
+    p.add_argument("--eval_n_sequences", type=int, default=64)
+    p.add_argument("--flow_steps", type=int, default=None,
+                   help="Euler steps for the flow arms. Default: the value sealed "
+                        "in flow_meta.json.")
+    p.add_argument("--flow_guidance_scale", type=float, default=None,
+                   help="CFG on the VELOCITY FIELD. Default: the sealed value.")
+    p.add_argument("--flow_rt_steps", nargs="+", type=int, default=None,
+                   help="Sweep n_steps in the flow_rt_* arms. Euler discretisation "
+                        "error falls like 1/n_steps; the model failing to be a "
+                        "consistent vector field does not, so the sweep is the only "
+                        "way to tell the two apart.")
+    p.add_argument("--sample_idx", type=int, default=0,
+                   help="Which ensemble member to reconstruct. 0 is the real "
+                        "pretrained model, but it sits ~sqrt(N) nearer the ensemble "
+                        "mean than a typical member, so a rank sweep on sample 0 "
+                        "understates truncation loss. Use a nonzero index for a "
+                        "meaningful k sweep.")
+    p.add_argument("--bench", nargs="*", default=None,
+                   choices=list(ALL_BENCHMARKS) + ["synthetic"],
+                   help="Measure MC benchmark accuracy alongside ΔPPL, on the SAME "
+                        "in-memory reconstructed model. Omit for none; bare --bench "
+                        "means all three real benchmarks. This is the expensive "
+                        "axis: 3 benchmarks x 200 questions x 4 choices is ~2,400 "
+                        "forward passes PER ARM PER ARCH PER RANK.")
+    p.add_argument("--bench_n_questions", type=int, default=200)
+    p.add_argument("--bench_seed", type=int, default=0)
+    p.add_argument("--bench_max_length", type=int, default=None,
+                   help="Override the per-model context cap. Default: read from the "
+                        "model config via eval_core.get_max_context_length.")
+    p.add_argument("--dispersion_n", type=int, default=64,
+                   help="Draws used to estimate each generative arm's code "
+                        "dispersion. Costs microseconds -- the "
+                        "expensive inverse_transform still runs once per arm. Set 0 "
+                        "to skip, but then a collapsed arm's dPPL is unreadable.")
+    p.add_argument("--out_suffix", default=None,
+                   help="Extra tag in the results filename, after the _s<idx> part. "
+                        "Use it to keep two eval jobs over the same run and target "
+                        "from overwriting each other -- e.g. --out_suffix bench for "
+                        "the benchmark job. report_stack.py picks up any suffix.")
+    p.add_argument("--seed", type=int, default=1234)
+    p.add_argument("--no_wandb", action="store_true")
+    wb.add_wandb_args(p)
+    args = p.parse_args()
+
+    # Bare --bench means all three; --bench mmlu means just MMLU; no flag means off.
+    bench_list = list(ALL_BENCHMARKS) if args.bench == [] else (args.bench or [])
+
+    run_root = os.path.join(args.artifact_dir, "runs", args.run_name)
+    ens_meta = os.path.join(run_root, "ensemble", "ensemble_meta.json")
+    if not os.path.exists(ens_meta):
+        raise SystemExit(f"No ensemble at {ens_meta}. Run train_stack.py first.")
+    with open(ens_meta) as f:
+        em = json.load(f)
+
+    arch_list = args.arch_list or em["arch_list"]
+    hf_cache = os.environ.get("HF_HOME", os.path.join(args.artifact_dir, "hf_cache"))
+
+    # The fitted rank comes from the bases on disk, so it has to be read before the
+    # rank list can be defaulted. load_run rebuilds the ensemble from the RECORDED
+    # parameters, which is what guarantees inverse_transform streams the same
+    # ensemble the PCA was fit on.
+    fitted = min(
+        (read_json(os.path.join(run_root, "pca", a, "gram_pca_meta.json")) or {}
+         ).get("n_components", 0)
+        for a in arch_list)
+    if fitted <= 0:
+        raise SystemExit(f"No fitted PCA under {run_root}/pca/. Run train_stack.py.")
+    ks = args.k or sorted({fitted, max(2, fitted // 2)}, reverse=True)
+    for k in ks:
+        if k > fitted:
+            raise SystemExit(f"--k {k} exceeds the fitted rank ({fitted}).")
+
+    real_bench = [b for b in bench_list if b != "synthetic"]
+    if real_bench and em["mode"] == "tiny":
+        raise SystemExit(
+            f"Refusing --bench {' '.join(real_bench)} against a tiny-mode ensemble. "
+            f"Tiny models are random-init with a mismatched tokenizer, so every "
+            f"accuracy sits at chance and the delta is noise dressed as a "
+            f"measurement. Use --bench synthetic to exercise the benchmark plumbing "
+            f"in a smoke test, or drop --bench.")
+    if "gpqa" in bench_list and not os.environ.get("HF_TOKEN"):
+        raise SystemExit(
+            "Refusing --bench gpqa without HF_TOKEN. Idavidrein/gpqa is a gated "
+            "dataset; without a token the job dies in a datasets traceback partway "
+            "through instead of now. Export HF_TOKEN before sbatch, or drop gpqa "
+            "from --bench.")
+
+    wb.init_run(job_type="eval_stack",
+                config={**vars(args), "ks": ks, "fitted_k": fitted,
+                        "bench_list": bench_list},
+                tags=["stack", args.run_name] + arch_list,
+                enabled=not args.no_wandb, artifact_dir=args.artifact_dir,
+                name_suffix=f"{args.run_name}_s{args.sample_idx}",
+                project=args.wandb_project, group=args.wandb_group)
+
+    print("=" * 74)
+    print("Whole-stack evaluation")
+    print(f"  run    : {args.run_name}")
+    print(f"  archs  : {arch_list}")
+    print(f"  N      : {em['n_samples']}  (rank bound {em['n_samples'] - 1}, "
+          f"fitted {fitted})")
+    print(f"  ranks  : {ks}")
+    print(f"  arms   : {args.arms}")
+    print(f"  bench  : {bench_list or 'off'}"
+          + (f"  ({args.bench_n_questions} questions each)" if bench_list else ""))
+    print("=" * 74)
+
+    bench_examples = None
+    if bench_list:
+        print("\nloading benchmark questions …")
+        bench_examples = load_bench_examples(bench_list, args.bench_n_questions,
+                                             hf_cache, args.bench_seed)
+    # Keyed (arch, sample_idx); the baseline is rank-independent, so this saves one
+    # full benchmark pass per arch per extra rank.
+    bench_baseline_cache: Dict[tuple, dict] = {}
+
+    want = wants_for(args.arms)
+    spaces = flow_spaces_for(args.arms)
+
+    results: Dict[str, dict] = {}
+    for k in ks:
+        print(f"\n{'-' * 74}\nloading run at k={k}  (want={list(want)})")
+        bundle = load_run(run_root, k, arch_list=arch_list, want=want,
+                          flow_spaces=spaces)
+        if bundle.trust != "verified":
+            print(f"  TRUST={bundle.trust} — every metric at k={k} inherits this "
+                  f"label and is footnoted in the report.")
+
+        for arch in arch_list:
+            print(f"\n=== {arch}  (k={k}) ===")
+            results[f"{arch}@k{k}"] = evaluate_arch(
+                arch, bundle, k, args.arms,
+                args.eval_seq_len, args.eval_n_sequences, hf_cache,
+                em["mode"], args.seed,
+                sample_idx=args.sample_idx,
+                bench_examples=bench_examples,
+                bench_baseline_cache=bench_baseline_cache,
+                bench_max_length=args.bench_max_length,
+                flow_steps=args.flow_steps,
+                flow_guidance_scale=args.flow_guidance_scale,
+                flow_rt_steps=args.flow_rt_steps,
+                dispersion_n=args.dispersion_n)
+        del bundle
+        gc.collect()
+
+    res_dir = os.path.join(run_root, "results")
+    os.makedirs(res_dir, exist_ok=True)
+    # sample_idx and out_suffix are BOTH in the filename because the two axes are
+    # independent: the all-arm dPPL job and the benchmark job are deliberately
+    # separate sbatch jobs (see slurm/stack_bench.sbatch's header on why), and at
+    # sample_idx 0 they would otherwise write the same path and clobber each other.
+    # report_stack.py globs stack_eval_results*.json and renders each as its own
+    # section, so any suffix slots in without a code change.
+    suffix = "" if args.sample_idx == 0 else f"_s{args.sample_idx}"
+    if args.out_suffix:
+        suffix += "_" + args.out_suffix.lstrip("_")
+    out_path = os.path.join(res_dir, f"stack_eval_results{suffix}.json")
+    with open(out_path, "w") as f:
+        json.dump(results, f, indent=2)
+
+    print("\n" + "=" * 74)
+    print(f"{'arch@k':26s} {'arm':10s} {'cosine':>10s} {'PPL orig':>10s} "
+          f"{'PPL new':>13s} {'Δ%':>12s}")
+    for key, r in results.items():
+        for arm, a in r["arms"].items():
+            print(f"{key:26s} {arm:10s} {a['cosine_sim']:10.6f} "
+                  f"{r['original_ppl']:10.3f} {a['ppl']:13.3f} "
+                  f"{a['ppl_delta_pct']:+12.3f}")
+            if "bench" in a:
+                parts = "   ".join(f"{bn} {bv['acc_delta']:+.4f}"
+                                   for bn, bv in a["bench"].items())
+                print(f"{'':26s} {'└ Δacc':10s} {parts}")
+    print(f"\nSaved → {out_path}")
+    wb.finish()
+
+
+if __name__ == "__main__":
+    main()

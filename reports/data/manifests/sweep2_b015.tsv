@@ -1,0 +1,8 @@
+# tag	nn_l1	n_excluded_mixtures	n_train_rows	extra_args
+ss0p125	nan	0	-1	--source_std 0.125
+ss0p25	nan	0	-1	--source_std 0.25
+ss0p35	nan	0	-1	--source_std 0.35
+ss0p75	nan	0	-1	--source_std 0.75
+adaln_ss0p5	nan	0	-1	--cond_inject adaln --source_std 0.5
+adaln_ss1	nan	0	-1	--cond_inject adaln --source_std 1.0
+adaln_w128_ss0p5	nan	0	-1	--cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128

@@ -1,0 +1,13 @@
+# tag	nn_l1	n_excluded_mixtures	n_train_rows	extra_args	target_pi
+adw_lomo_anchor_books	0.438546	1	96	--center_pi 0 0 0 1 0 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0 0 0 1 0
+adw_lomo_anchor_code	0.771206	1	96	--center_pi 0 1 0 0 0 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0 1 0 0 0
+adw_lomo_anchor_math	0.568193	1	96	--center_pi 0 0 1 0 0 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0 0 1 0 0
+adw_lomo_anchor_multilingual	0.674045	1	96	--center_pi 0 0 0 0 1 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0 0 0 0 1
+adw_lomo_anchor_web	0.460003	1	96	--center_pi 1 0 0 0 0 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	1 0 0 0 0
+adw_lomo_dirichlet_039	0.172541	1	99	--center_pi 0.198792253 0.337135733 0.114990509 0.267672812 0.0814086937 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.198792253 0.337135733 0.114990509 0.267672812 0.0814086937
+adw_lomo_dirichlet_027	0.208952	1	99	--center_pi 0.135685977 0.0797742168 0.0705013054 0.309981808 0.404056693 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.135685977 0.0797742168 0.0705013054 0.309981808 0.404056693
+adw_lomo_dirichlet_067	0.229445	1	99	--center_pi 0.020654591 0.0628528452 0.23001836 0.319581307 0.366892896 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.020654591 0.0628528452 0.23001836 0.319581307 0.366892896
+adw_lomo_dirichlet_077	0.242043	1	99	--center_pi 0.250915672 0.196142129 0.400833404 0.0453636266 0.106745169 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.250915672 0.196142129 0.400833404 0.0453636266 0.106745169
+adw_lomo_dirichlet_020	0.260447	1	99	--center_pi 0.158107716 0.373062461 0.217542866 0.224325937 0.0269610191 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.158107716 0.373062461 0.217542866 0.224325937 0.0269610191
+adw_lomo_dirichlet_063	0.286665	1	99	--center_pi 0.231041695 0.312760728 0.0260902888 0.378755819 0.0513514689 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.231041695 0.312760728 0.0260902888 0.378755819 0.0513514689
+adw_lomo_dirichlet_009	0.308209	1	99	--center_pi 0.139924642 0.0198984281 0.308985754 0.427610576 0.1035806 --exclude_within_l1 1e-6 --cond_inject adaln --source_std 0.5 --hidden_dims 128 256 128	0.139924642 0.0198984281 0.308985754 0.427610576 0.1035806

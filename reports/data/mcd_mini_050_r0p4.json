@@ -1,0 +1,55 @@
+{
+  "run_name": "zoo_b015_mini_k99",
+  "k": 50,
+  "n_members": 100,
+  "n_steps": 200,
+  "flow_dir": "flow_k50_codes_pi_def_rad_dirichlet_050_r0p4",
+  "consistency": {
+    "mean_abs_gap": 0.8731069564819336,
+    "logp_std": 14.446170806884766,
+    "relative": 0.06043864274855643,
+    "ok": false,
+    "n_steps": 200
+  },
+  "nll_pi_per_dim": -0.6857424974441528,
+  "nll_uncond_per_dim": -0.23312346637248993,
+  "mi_lower_bound_nats": 22.630949020385742,
+  "mi_lower_bound_per_dim": 0.45261898040771487,
+  "null_cond_mode": "family",
+  "identification": {
+    "n_x": 100,
+    "n_pi": 85,
+    "top1": 0.94,
+    "top5": 0.99,
+    "median_rank": 1.0,
+    "chance_top1": 0.011764705882352941,
+    "chance_median_rank": 43.0,
+    "tie_fraction": 0.0,
+    "infonce_nats": 4.019305859449671,
+    "max_infonce": 4.442651256490317
+  },
+  "knn_kl_real_to_gen_lead8": -4.609006001048187,
+  "c2st_joint_lead8": 0.975609756097561,
+  "c2st_codes_only_lead8": 0.975609756097561,
+  "n_gen": 4000,
+  "three_sample_source": "flow_exclusion",
+  "three_sample_n_excluded": 9,
+  "three_sample_lead5": {
+    "n_gen": 4000,
+    "n_test": 9,
+    "mean_nn_gen_to_train": 0.3569737374782562,
+    "mean_nn_test_to_train": 0.6133871674537659,
+    "ratio": 0.581971287727356,
+    "Z_U": -2.7165036082617458,
+    "verdict": "no copying detected"
+  },
+  "three_sample_full": {
+    "n_gen": 4000,
+    "n_test": 9,
+    "mean_nn_gen_to_train": 1.7386600971221924,
+    "mean_nn_test_to_train": 2.0819427967071533,
+    "ratio": 0.8351142406463623,
+    "Z_U": -2.08163405345466,
+    "verdict": "no copying detected"
+  }
+}

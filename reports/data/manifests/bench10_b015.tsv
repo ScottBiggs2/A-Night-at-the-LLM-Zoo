@@ -1,0 +1,27 @@
+# The 10-cell downstream-benchmark pilot.
+#
+# A strict subset of lomo_def_b015.tsv, so every cell already has a trained LOMO
+# flow and an existing functional number to sit beside.
+#
+# COMPOSITION IS 5 VERTICES + 5 INTERIOR, AND THE TWO ARE NEVER POOLED. A one-hot
+# mixture is the most extreme point the design contains and vertex cells run ~10x
+# the interior's functional error, so a subset that mixes them reads high for a
+# reason that has nothing to do with the generator. Here the
+# split is structural rather than checked: report_bench.py decides the stratum from
+# pi itself.
+#
+# The five interior cells are the QUINTILE MEDIANS of nn_l1 over the 80 interior
+# rows of lomo_def_b015.tsv, sorted ascending, at indices 8/24/40/56/72 --
+# 0.2086 / 0.2387 / 0.2522 / 0.2906 / 0.3295 against a full-design range of
+# 0.173..0.469. Pre-registered before any benchmark was scored.
+# tag	nn_l1	n_excluded_mixtures	n_train_rows	extra_args	target_pi
+def_lomo_anchor_books	0.438546	1	96	--center_pi 0 0 0 1 0 --exclude_within_l1 1e-6	0 0 0 1 0
+def_lomo_anchor_code	0.771206	1	96	--center_pi 0 1 0 0 0 --exclude_within_l1 1e-6	0 1 0 0 0
+def_lomo_anchor_math	0.568193	1	96	--center_pi 0 0 1 0 0 --exclude_within_l1 1e-6	0 0 1 0 0
+def_lomo_anchor_multilingual	0.674045	1	96	--center_pi 0 0 0 0 1 --exclude_within_l1 1e-6	0 0 0 0 1
+def_lomo_anchor_web	0.460003	1	96	--center_pi 1 0 0 0 0 --exclude_within_l1 1e-6	1 0 0 0 0
+def_lomo_dirichlet_004	0.252218	1	99	--center_pi 0.00996139732 0.0364305683 0.277325628 0.208505597 0.46777681 --exclude_within_l1 1e-6	0.00996139732 0.0364305683 0.277325628 0.208505597 0.46777681
+def_lomo_dirichlet_016	0.290562	1	99	--center_pi 0.33579375 0.104926916 0.352823904 0.204033079 0.00242235089 --exclude_within_l1 1e-6	0.33579375 0.104926916 0.352823904 0.204033079 0.00242235089
+def_lomo_dirichlet_021	0.238675	1	99	--center_pi 0.115722015 0.614397068 0.0146078456 0.252689361 0.0025837114 --exclude_within_l1 1e-6	0.115722015 0.614397068 0.0146078456 0.252689361 0.0025837114
+def_lomo_dirichlet_036	0.208629	1	99	--center_pi 0.257451539 0.00569603678 0.261901496 0.268639553 0.206311375 --exclude_within_l1 1e-6	0.257451539 0.00569603678 0.261901496 0.268639553 0.206311375
+def_lomo_dirichlet_074	0.329543	1	99	--center_pi 0.091153214 0.0254471289 0.715903653 0.0195431538 0.14795285 --exclude_within_l1 1e-6	0.091153214 0.0254471289 0.715903653 0.0195431538 0.14795285

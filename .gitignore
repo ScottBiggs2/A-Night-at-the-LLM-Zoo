@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Site configuration and secrets -- never commit
+slurm/site.sh
+.env
+.env.*
+*.env
+.netrc
+*_token
+*_secret
+*credentials*
+wandb/
+
+# Local job logs and outputs
+logs/
+*.out
+*.err
+/outputs/
+/artifacts*/
+/runs/
+
+# Model weights and large arrays. The few small .npy files under reports/data/
+# that the tables and figures read are committed explicitly.
+*.pt
+*.pth
+*.npy
+*.npz
+!reports/data/population/*/displacement_gram.npy
+!reports/data/population/*/weight_embeddings/centered_gram.npy
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+*.swp

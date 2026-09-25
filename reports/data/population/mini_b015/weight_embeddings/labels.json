@@ -1,0 +1,902 @@
+[
+  {
+    "row": 0,
+    "member_idx": 0,
+    "domain": "web",
+    "run_id": 0,
+    "sampling_seed": 10000,
+    "kind": "anchor",
+    "mixture_id": "anchor_web"
+  },
+  {
+    "row": 1,
+    "member_idx": 1,
+    "domain": "web",
+    "run_id": 1,
+    "sampling_seed": 10001,
+    "kind": "anchor",
+    "mixture_id": "anchor_web"
+  },
+  {
+    "row": 2,
+    "member_idx": 2,
+    "domain": "web",
+    "run_id": 2,
+    "sampling_seed": 10002,
+    "kind": "anchor",
+    "mixture_id": "anchor_web"
+  },
+  {
+    "row": 3,
+    "member_idx": 3,
+    "domain": "web",
+    "run_id": 3,
+    "sampling_seed": 10003,
+    "kind": "anchor",
+    "mixture_id": "anchor_web"
+  },
+  {
+    "row": 4,
+    "member_idx": 4,
+    "domain": "code",
+    "run_id": 0,
+    "sampling_seed": 10004,
+    "kind": "anchor",
+    "mixture_id": "anchor_code"
+  },
+  {
+    "row": 5,
+    "member_idx": 5,
+    "domain": "code",
+    "run_id": 1,
+    "sampling_seed": 10005,
+    "kind": "anchor",
+    "mixture_id": "anchor_code"
+  },
+  {
+    "row": 6,
+    "member_idx": 6,
+    "domain": "code",
+    "run_id": 2,
+    "sampling_seed": 10006,
+    "kind": "anchor",
+    "mixture_id": "anchor_code"
+  },
+  {
+    "row": 7,
+    "member_idx": 7,
+    "domain": "code",
+    "run_id": 3,
+    "sampling_seed": 10007,
+    "kind": "anchor",
+    "mixture_id": "anchor_code"
+  },
+  {
+    "row": 8,
+    "member_idx": 8,
+    "domain": "math",
+    "run_id": 0,
+    "sampling_seed": 10008,
+    "kind": "anchor",
+    "mixture_id": "anchor_math"
+  },
+  {
+    "row": 9,
+    "member_idx": 9,
+    "domain": "math",
+    "run_id": 1,
+    "sampling_seed": 10009,
+    "kind": "anchor",
+    "mixture_id": "anchor_math"
+  },
+  {
+    "row": 10,
+    "member_idx": 10,
+    "domain": "math",
+    "run_id": 2,
+    "sampling_seed": 10010,
+    "kind": "anchor",
+    "mixture_id": "anchor_math"
+  },
+  {
+    "row": 11,
+    "member_idx": 11,
+    "domain": "math",
+    "run_id": 3,
+    "sampling_seed": 10011,
+    "kind": "anchor",
+    "mixture_id": "anchor_math"
+  },
+  {
+    "row": 12,
+    "member_idx": 12,
+    "domain": "books",
+    "run_id": 0,
+    "sampling_seed": 10012,
+    "kind": "anchor",
+    "mixture_id": "anchor_books"
+  },
+  {
+    "row": 13,
+    "member_idx": 13,
+    "domain": "books",
+    "run_id": 1,
+    "sampling_seed": 10013,
+    "kind": "anchor",
+    "mixture_id": "anchor_books"
+  },
+  {
+    "row": 14,
+    "member_idx": 14,
+    "domain": "books",
+    "run_id": 2,
+    "sampling_seed": 10014,
+    "kind": "anchor",
+    "mixture_id": "anchor_books"
+  },
+  {
+    "row": 15,
+    "member_idx": 15,
+    "domain": "books",
+    "run_id": 3,
+    "sampling_seed": 10015,
+    "kind": "anchor",
+    "mixture_id": "anchor_books"
+  },
+  {
+    "row": 16,
+    "member_idx": 16,
+    "domain": "multilingual",
+    "run_id": 0,
+    "sampling_seed": 10016,
+    "kind": "anchor",
+    "mixture_id": "anchor_multilingual"
+  },
+  {
+    "row": 17,
+    "member_idx": 17,
+    "domain": "multilingual",
+    "run_id": 1,
+    "sampling_seed": 10017,
+    "kind": "anchor",
+    "mixture_id": "anchor_multilingual"
+  },
+  {
+    "row": 18,
+    "member_idx": 18,
+    "domain": "multilingual",
+    "run_id": 2,
+    "sampling_seed": 10018,
+    "kind": "anchor",
+    "mixture_id": "anchor_multilingual"
+  },
+  {
+    "row": 19,
+    "member_idx": 19,
+    "domain": "multilingual",
+    "run_id": 3,
+    "sampling_seed": 10019,
+    "kind": "anchor",
+    "mixture_id": "anchor_multilingual"
+  },
+  {
+    "row": 20,
+    "member_idx": 20,
+    "domain": "dirichlet_000",
+    "run_id": 0,
+    "sampling_seed": 10020,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_000"
+  },
+  {
+    "row": 21,
+    "member_idx": 21,
+    "domain": "dirichlet_001",
+    "run_id": 0,
+    "sampling_seed": 10021,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_001"
+  },
+  {
+    "row": 22,
+    "member_idx": 22,
+    "domain": "dirichlet_002",
+    "run_id": 0,
+    "sampling_seed": 10022,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_002"
+  },
+  {
+    "row": 23,
+    "member_idx": 23,
+    "domain": "dirichlet_003",
+    "run_id": 0,
+    "sampling_seed": 10023,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_003"
+  },
+  {
+    "row": 24,
+    "member_idx": 24,
+    "domain": "dirichlet_004",
+    "run_id": 0,
+    "sampling_seed": 10024,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_004"
+  },
+  {
+    "row": 25,
+    "member_idx": 25,
+    "domain": "dirichlet_005",
+    "run_id": 0,
+    "sampling_seed": 10025,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_005"
+  },
+  {
+    "row": 26,
+    "member_idx": 26,
+    "domain": "dirichlet_006",
+    "run_id": 0,
+    "sampling_seed": 10026,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_006"
+  },
+  {
+    "row": 27,
+    "member_idx": 27,
+    "domain": "dirichlet_007",
+    "run_id": 0,
+    "sampling_seed": 10027,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_007"
+  },
+  {
+    "row": 28,
+    "member_idx": 28,
+    "domain": "dirichlet_008",
+    "run_id": 0,
+    "sampling_seed": 10028,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_008"
+  },
+  {
+    "row": 29,
+    "member_idx": 29,
+    "domain": "dirichlet_009",
+    "run_id": 0,
+    "sampling_seed": 10029,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_009"
+  },
+  {
+    "row": 30,
+    "member_idx": 30,
+    "domain": "dirichlet_010",
+    "run_id": 0,
+    "sampling_seed": 10030,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_010"
+  },
+  {
+    "row": 31,
+    "member_idx": 31,
+    "domain": "dirichlet_011",
+    "run_id": 0,
+    "sampling_seed": 10031,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_011"
+  },
+  {
+    "row": 32,
+    "member_idx": 32,
+    "domain": "dirichlet_012",
+    "run_id": 0,
+    "sampling_seed": 10032,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_012"
+  },
+  {
+    "row": 33,
+    "member_idx": 33,
+    "domain": "dirichlet_013",
+    "run_id": 0,
+    "sampling_seed": 10033,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_013"
+  },
+  {
+    "row": 34,
+    "member_idx": 34,
+    "domain": "dirichlet_014",
+    "run_id": 0,
+    "sampling_seed": 10034,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_014"
+  },
+  {
+    "row": 35,
+    "member_idx": 35,
+    "domain": "dirichlet_015",
+    "run_id": 0,
+    "sampling_seed": 10035,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_015"
+  },
+  {
+    "row": 36,
+    "member_idx": 36,
+    "domain": "dirichlet_016",
+    "run_id": 0,
+    "sampling_seed": 10036,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_016"
+  },
+  {
+    "row": 37,
+    "member_idx": 37,
+    "domain": "dirichlet_017",
+    "run_id": 0,
+    "sampling_seed": 10037,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_017"
+  },
+  {
+    "row": 38,
+    "member_idx": 38,
+    "domain": "dirichlet_018",
+    "run_id": 0,
+    "sampling_seed": 10038,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_018"
+  },
+  {
+    "row": 39,
+    "member_idx": 39,
+    "domain": "dirichlet_019",
+    "run_id": 0,
+    "sampling_seed": 10039,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_019"
+  },
+  {
+    "row": 40,
+    "member_idx": 40,
+    "domain": "dirichlet_020",
+    "run_id": 0,
+    "sampling_seed": 10040,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_020"
+  },
+  {
+    "row": 41,
+    "member_idx": 41,
+    "domain": "dirichlet_021",
+    "run_id": 0,
+    "sampling_seed": 10041,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_021"
+  },
+  {
+    "row": 42,
+    "member_idx": 42,
+    "domain": "dirichlet_022",
+    "run_id": 0,
+    "sampling_seed": 10042,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_022"
+  },
+  {
+    "row": 43,
+    "member_idx": 43,
+    "domain": "dirichlet_023",
+    "run_id": 0,
+    "sampling_seed": 10043,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_023"
+  },
+  {
+    "row": 44,
+    "member_idx": 44,
+    "domain": "dirichlet_024",
+    "run_id": 0,
+    "sampling_seed": 10044,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_024"
+  },
+  {
+    "row": 45,
+    "member_idx": 45,
+    "domain": "dirichlet_025",
+    "run_id": 0,
+    "sampling_seed": 10045,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_025"
+  },
+  {
+    "row": 46,
+    "member_idx": 46,
+    "domain": "dirichlet_026",
+    "run_id": 0,
+    "sampling_seed": 10046,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_026"
+  },
+  {
+    "row": 47,
+    "member_idx": 47,
+    "domain": "dirichlet_027",
+    "run_id": 0,
+    "sampling_seed": 10047,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_027"
+  },
+  {
+    "row": 48,
+    "member_idx": 48,
+    "domain": "dirichlet_028",
+    "run_id": 0,
+    "sampling_seed": 10048,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_028"
+  },
+  {
+    "row": 49,
+    "member_idx": 49,
+    "domain": "dirichlet_029",
+    "run_id": 0,
+    "sampling_seed": 10049,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_029"
+  },
+  {
+    "row": 50,
+    "member_idx": 50,
+    "domain": "dirichlet_030",
+    "run_id": 0,
+    "sampling_seed": 10050,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_030"
+  },
+  {
+    "row": 51,
+    "member_idx": 51,
+    "domain": "dirichlet_031",
+    "run_id": 0,
+    "sampling_seed": 10051,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_031"
+  },
+  {
+    "row": 52,
+    "member_idx": 52,
+    "domain": "dirichlet_032",
+    "run_id": 0,
+    "sampling_seed": 10052,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_032"
+  },
+  {
+    "row": 53,
+    "member_idx": 53,
+    "domain": "dirichlet_033",
+    "run_id": 0,
+    "sampling_seed": 10053,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_033"
+  },
+  {
+    "row": 54,
+    "member_idx": 54,
+    "domain": "dirichlet_034",
+    "run_id": 0,
+    "sampling_seed": 10054,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_034"
+  },
+  {
+    "row": 55,
+    "member_idx": 55,
+    "domain": "dirichlet_035",
+    "run_id": 0,
+    "sampling_seed": 10055,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_035"
+  },
+  {
+    "row": 56,
+    "member_idx": 56,
+    "domain": "dirichlet_036",
+    "run_id": 0,
+    "sampling_seed": 10056,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_036"
+  },
+  {
+    "row": 57,
+    "member_idx": 57,
+    "domain": "dirichlet_037",
+    "run_id": 0,
+    "sampling_seed": 10057,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_037"
+  },
+  {
+    "row": 58,
+    "member_idx": 58,
+    "domain": "dirichlet_038",
+    "run_id": 0,
+    "sampling_seed": 10058,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_038"
+  },
+  {
+    "row": 59,
+    "member_idx": 59,
+    "domain": "dirichlet_039",
+    "run_id": 0,
+    "sampling_seed": 10059,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_039"
+  },
+  {
+    "row": 60,
+    "member_idx": 60,
+    "domain": "dirichlet_040",
+    "run_id": 0,
+    "sampling_seed": 10060,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_040"
+  },
+  {
+    "row": 61,
+    "member_idx": 61,
+    "domain": "dirichlet_041",
+    "run_id": 0,
+    "sampling_seed": 10061,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_041"
+  },
+  {
+    "row": 62,
+    "member_idx": 62,
+    "domain": "dirichlet_042",
+    "run_id": 0,
+    "sampling_seed": 10062,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_042"
+  },
+  {
+    "row": 63,
+    "member_idx": 63,
+    "domain": "dirichlet_043",
+    "run_id": 0,
+    "sampling_seed": 10063,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_043"
+  },
+  {
+    "row": 64,
+    "member_idx": 64,
+    "domain": "dirichlet_044",
+    "run_id": 0,
+    "sampling_seed": 10064,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_044"
+  },
+  {
+    "row": 65,
+    "member_idx": 65,
+    "domain": "dirichlet_045",
+    "run_id": 0,
+    "sampling_seed": 10065,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_045"
+  },
+  {
+    "row": 66,
+    "member_idx": 66,
+    "domain": "dirichlet_046",
+    "run_id": 0,
+    "sampling_seed": 10066,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_046"
+  },
+  {
+    "row": 67,
+    "member_idx": 67,
+    "domain": "dirichlet_047",
+    "run_id": 0,
+    "sampling_seed": 10067,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_047"
+  },
+  {
+    "row": 68,
+    "member_idx": 68,
+    "domain": "dirichlet_048",
+    "run_id": 0,
+    "sampling_seed": 10068,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_048"
+  },
+  {
+    "row": 69,
+    "member_idx": 69,
+    "domain": "dirichlet_049",
+    "run_id": 0,
+    "sampling_seed": 10069,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_049"
+  },
+  {
+    "row": 70,
+    "member_idx": 70,
+    "domain": "dirichlet_050",
+    "run_id": 0,
+    "sampling_seed": 10070,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_050"
+  },
+  {
+    "row": 71,
+    "member_idx": 71,
+    "domain": "dirichlet_051",
+    "run_id": 0,
+    "sampling_seed": 10071,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_051"
+  },
+  {
+    "row": 72,
+    "member_idx": 72,
+    "domain": "dirichlet_052",
+    "run_id": 0,
+    "sampling_seed": 10072,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_052"
+  },
+  {
+    "row": 73,
+    "member_idx": 73,
+    "domain": "dirichlet_053",
+    "run_id": 0,
+    "sampling_seed": 10073,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_053"
+  },
+  {
+    "row": 74,
+    "member_idx": 74,
+    "domain": "dirichlet_054",
+    "run_id": 0,
+    "sampling_seed": 10074,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_054"
+  },
+  {
+    "row": 75,
+    "member_idx": 75,
+    "domain": "dirichlet_055",
+    "run_id": 0,
+    "sampling_seed": 10075,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_055"
+  },
+  {
+    "row": 76,
+    "member_idx": 76,
+    "domain": "dirichlet_056",
+    "run_id": 0,
+    "sampling_seed": 10076,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_056"
+  },
+  {
+    "row": 77,
+    "member_idx": 77,
+    "domain": "dirichlet_057",
+    "run_id": 0,
+    "sampling_seed": 10077,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_057"
+  },
+  {
+    "row": 78,
+    "member_idx": 78,
+    "domain": "dirichlet_058",
+    "run_id": 0,
+    "sampling_seed": 10078,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_058"
+  },
+  {
+    "row": 79,
+    "member_idx": 79,
+    "domain": "dirichlet_059",
+    "run_id": 0,
+    "sampling_seed": 10079,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_059"
+  },
+  {
+    "row": 80,
+    "member_idx": 80,
+    "domain": "dirichlet_060",
+    "run_id": 0,
+    "sampling_seed": 10080,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_060"
+  },
+  {
+    "row": 81,
+    "member_idx": 81,
+    "domain": "dirichlet_061",
+    "run_id": 0,
+    "sampling_seed": 10081,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_061"
+  },
+  {
+    "row": 82,
+    "member_idx": 82,
+    "domain": "dirichlet_062",
+    "run_id": 0,
+    "sampling_seed": 10082,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_062"
+  },
+  {
+    "row": 83,
+    "member_idx": 83,
+    "domain": "dirichlet_063",
+    "run_id": 0,
+    "sampling_seed": 10083,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_063"
+  },
+  {
+    "row": 84,
+    "member_idx": 84,
+    "domain": "dirichlet_064",
+    "run_id": 0,
+    "sampling_seed": 10084,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_064"
+  },
+  {
+    "row": 85,
+    "member_idx": 85,
+    "domain": "dirichlet_065",
+    "run_id": 0,
+    "sampling_seed": 10085,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_065"
+  },
+  {
+    "row": 86,
+    "member_idx": 86,
+    "domain": "dirichlet_066",
+    "run_id": 0,
+    "sampling_seed": 10086,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_066"
+  },
+  {
+    "row": 87,
+    "member_idx": 87,
+    "domain": "dirichlet_067",
+    "run_id": 0,
+    "sampling_seed": 10087,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_067"
+  },
+  {
+    "row": 88,
+    "member_idx": 88,
+    "domain": "dirichlet_068",
+    "run_id": 0,
+    "sampling_seed": 10088,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_068"
+  },
+  {
+    "row": 89,
+    "member_idx": 89,
+    "domain": "dirichlet_069",
+    "run_id": 0,
+    "sampling_seed": 10089,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_069"
+  },
+  {
+    "row": 90,
+    "member_idx": 90,
+    "domain": "dirichlet_070",
+    "run_id": 0,
+    "sampling_seed": 10090,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_070"
+  },
+  {
+    "row": 91,
+    "member_idx": 91,
+    "domain": "dirichlet_071",
+    "run_id": 0,
+    "sampling_seed": 10091,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_071"
+  },
+  {
+    "row": 92,
+    "member_idx": 92,
+    "domain": "dirichlet_072",
+    "run_id": 0,
+    "sampling_seed": 10092,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_072"
+  },
+  {
+    "row": 93,
+    "member_idx": 93,
+    "domain": "dirichlet_073",
+    "run_id": 0,
+    "sampling_seed": 10093,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_073"
+  },
+  {
+    "row": 94,
+    "member_idx": 94,
+    "domain": "dirichlet_074",
+    "run_id": 0,
+    "sampling_seed": 10094,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_074"
+  },
+  {
+    "row": 95,
+    "member_idx": 95,
+    "domain": "dirichlet_075",
+    "run_id": 0,
+    "sampling_seed": 10095,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_075"
+  },
+  {
+    "row": 96,
+    "member_idx": 96,
+    "domain": "dirichlet_076",
+    "run_id": 0,
+    "sampling_seed": 10096,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_076"
+  },
+  {
+    "row": 97,
+    "member_idx": 97,
+    "domain": "dirichlet_077",
+    "run_id": 0,
+    "sampling_seed": 10097,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_077"
+  },
+  {
+    "row": 98,
+    "member_idx": 98,
+    "domain": "dirichlet_078",
+    "run_id": 0,
+    "sampling_seed": 10098,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_078"
+  },
+  {
+    "row": 99,
+    "member_idx": 99,
+    "domain": "dirichlet_079",
+    "run_id": 0,
+    "sampling_seed": 10099,
+    "kind": "singleton",
+    "mixture_id": "dirichlet_079"
+  }
+]

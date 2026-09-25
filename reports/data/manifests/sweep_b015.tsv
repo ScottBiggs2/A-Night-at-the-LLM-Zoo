@@ -1,0 +1,7 @@
+# tag	nn_l1	n_excluded_mixtures	n_train_rows	extra_args
+pn0	nan	0	-1	--path_noise 0.0
+pn0p01	nan	0	-1	--path_noise 0.01
+pn0p05	nan	0	-1	--path_noise 0.05
+pn0p1	nan	0	-1	--path_noise 0.1
+ss0p5	nan	0	-1	--source_std 0.5
+ss2	nan	0	-1	--source_std 2.0

@@ -1,0 +1,18 @@
+# Retrain the two Medium whole-Zoo flows that early-stopped, under a NEW TAG so the
+# sealed originals survive for comparison. Medium's flow_k50_codes_pi ran 2570 of
+# 20000 epochs and flow_k50_codes_null_ss1 ran 1481, both because the one-off sbatch
+# that trained them took train_flow.py's argparse default --patience 400
+# instead of flow_arm.sbatch's --patience "$EPOCHS". Every other flow at every scale
+# hit the cap. nn_l1/n_train_rows are nan/-1 as in null_b015.tsv: these are not
+# leave-one-mixture-out arms, the basis and the training rows are the whole zoo.
+#
+#   RUN=zoo_b015_medium_k99 K=50 EPOCHS=20000 MANIFEST=reports/data/manifests/e20k_b015.tsv \
+#       sbatch --array=0 slurm/flow_arm.sbatch                       -> flow_k50_codes_pi_e20k
+#   RUN=zoo_b015_medium_k99 K=50 EPOCHS=20000 COND_MODE=family MANIFEST=... \
+#       sbatch --array=1 slurm/flow_arm.sbatch               -> flow_k50_codes_null_ss1_e20k
+#
+# COND_MODE is a job-level env var on purpose (see flow_arm.sbatch): argparse would
+# take the last --cond_mode and the winner would depend on argument order.
+# tag	nn_l1	n_excluded_mixtures	n_train_rows	extra_args	target_pi
+e20k	nan	0	-1		
+null_ss1_e20k	nan	0	-1	--source_std 1.0	

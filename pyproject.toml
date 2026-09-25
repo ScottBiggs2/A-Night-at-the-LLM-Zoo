@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmzoo"
+version = "0.1.0"
+description = "Generative modelling over the weights of a zoo of language models"
+requires-python = ">=3.11"
+
+# torch is deliberately ABSENT.
+#
+# Recent GPUs need a CUDA-specific build (e.g. cu128), which does not live on the
+# default PyPI index. If torch were listed here, `pip install -e .` could silently
+# pull a default-index wheel over the CUDA one already installed, and the failure
+# would not surface until a job hit the first CUDA kernel.
+#
+# slurm/setup_env.sh installs torch from the CUDA index FIRST, then runs
+# `pip install -e .` for everything below.
+# UPPER BOUNDS ON transformers AND datasets ARE DELIBERATE.
+#
+# This code targets the transformers 4.x / datasets 2-3.x APIs. Unbounded, a
+# fresh `pip install -e .` resolves to transformers 5.x and datasets 5.x -- two
+# major versions of unrelated churn layered on top of code that had never
+# executed, which makes every traceback ambiguous between "our bug" and "v5
+# renamed it".
+#
+# datasets<4 also still supports loading-script datasets. We do not rely on that
+# (every id in data/mixtures.py is parquet-native and ungated, on purpose), but
+# it means a stale id fails with a clear error instead of a hard removal.
+#
+# Raise these on purpose, with a test run, not by deleting the bound.
+dependencies = [
+    "numpy>=1.23.0",
+    "scikit-learn>=1.2.0",
+    "transformers>=4.57,<5",
+    "accelerate>=0.27.0",
+    "datasets>=3.6,<4",
+    "wandb>=0.17.0",
+]
+
+# src/llmzoo/analysis/Embeddings/* is the only place that plots with anything
+# other than the hand-rolled SVG in analysis/*/zoo.py:plot_layers. Both entry
+# points there SystemExit on a missing matplotlib, so it is a real dependency
+# of the population report rather than a dev convenience.
+[project.optional-dependencies]
+dev = ["pyflakes"]
+plots = ["matplotlib>=3.7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
